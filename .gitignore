@@ -1,0 +1,9 @@
+.DS_Store
+Thumbs.db
+*.log
+*.zip
+*.crx
+__pycache__/
+.tools-cache/
+
+.workbuddy/

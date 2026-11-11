@@ -1,0 +1,26 @@
+{
+  "manifest_version": 3,
+  "name": "NeoTab — 干净的新标签页",
+  "short_name": "NeoTab",
+  "version": "1.4.7",
+  "description": "一个零依赖、纯本地的新标签页：图标导航、多桌面分组、壁纸与响应式设置。无账号、无统计、无后台服务；站点图标自动解析可一键关闭，WebDAV 同步默认不启用。",
+  "homepage_url": "https://github.com/AlexIllinois2/neotab",
+  "icons": {
+    "16": "icons/icon-16.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "chrome_url_overrides": {
+    "newtab": "newtab.html"
+  },
+  "permissions": [
+    "storage",
+    "bookmarks",
+    "favicon",
+    "unlimitedStorage"
+  ],
+  "optional_host_permissions": [
+    "http://*/*",
+    "https://*/*"
+  ]
+}

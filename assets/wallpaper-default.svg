@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080" width="1920" height="1080" preserveAspectRatio="xMidYMid slice">
+  <!-- Self-drawn abstract wallpaper: broad warm / cool colour fields that stay
+       readable after the heavy gaussian blur used by the reference mod. -->
+  <defs>
+    <linearGradient id="base" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1b2130"/>
+      <stop offset="0.52" stop-color="#252a3a"/>
+      <stop offset="1" stop-color="#121826"/>
+    </linearGradient>
+    <radialGradient id="warm" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#d9794a" stop-opacity="0.85"/>
+      <stop offset="0.55" stop-color="#a8543f" stop-opacity="0.42"/>
+      <stop offset="1" stop-color="#a8543f" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="cool" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#4d7f9e" stop-opacity="0.88"/>
+      <stop offset="0.6" stop-color="#315a78" stop-opacity="0.4"/>
+      <stop offset="1" stop-color="#315a78" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="pale" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#cfd6d8" stop-opacity="0.58"/>
+      <stop offset="1" stop-color="#cfd6d8" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="violet" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#6a4d86" stop-opacity="0.6"/>
+      <stop offset="1" stop-color="#6a4d86" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1920" height="1080" fill="url(#base)"/>
+  <ellipse cx="330" cy="150" rx="760" ry="560" fill="url(#warm)"/>
+  <ellipse cx="1540" cy="330" rx="820" ry="700" fill="url(#cool)"/>
+  <ellipse cx="900" cy="1020" rx="1000" ry="470" fill="url(#pale)"/>
+  <ellipse cx="1780" cy="960" rx="560" ry="420" fill="url(#violet)"/>
+  <ellipse cx="620" cy="720" rx="520" ry="330" fill="url(#cool)" opacity="0.55"/>
+</svg>

@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="dark">
+  <title>NeoTab · 新标签页</title>
+  <link rel="icon" href="icons/icon-48.png">
+  <link rel="stylesheet" href="css/base.css">
+  <link rel="stylesheet" href="css/layout.css">
+  <link rel="stylesheet" href="css/settings.css">
+</head>
+<body>
+<svg class="svg-sprite" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+  <symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="8.5" cy="9.5" r="1.6" fill="currentColor"/><path d="M4 17l5-5 3.5 3.5L16 12l4 4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></symbol>
+  <symbol id="i-settings" viewBox="0 0 24 24"><path d="M12 15.2a3.2 3.2 0 100-6.4 3.2 3.2 0 000 6.4z" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M19.4 13.5l1.5 1.2-1.7 3-1.9-.6a7.7 7.7 0 01-1.7 1l-.4 2h-3.4l-.4-2a7.7 7.7 0 01-1.7-1l-1.9.6-1.7-3 1.5-1.2a7.6 7.6 0 010-2L6.1 10l1.7-3 1.9.6a7.7 7.7 0 011.7-1l.4-2h3.4l.4 2a7.7 7.7 0 011.7 1l1.9-.6 1.7 3-1.5 1.2a7.6 7.6 0 010 2z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.8" cy="10.8" r="6.3" fill="none" stroke="currentColor" stroke-width="1.9"/><path d="M15.5 15.5L20 20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></symbol>
+  <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7a2 2 0 012-2h4.2l2 2H19a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="10.5" width="14" height="9.5" rx="2.2" fill="none" stroke="currentColor" stroke-width="1.9"/><path d="M8 10.5V8a4 4 0 018 0v2.5" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/><circle cx="12" cy="15.2" r="1.5" fill="currentColor"/></symbol>
+  <symbol id="i-external" viewBox="0 0 24 24"><path d="M13 5h6v6M19 5l-8 8M18 14v4a2 2 0 01-2 2H6a2 2 0 01-2-2V8a2 2 0 012-2h4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-note" viewBox="0 0 24 24"><path d="M5 4h14v12l-4 4H5z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M8 9h8M8 13h5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+</svg>
+
+<div class="wallpaper" id="wallpaper"></div>
+<div class="wallpaper-veil" id="wallpaperVeil"></div>
+
+<div class="app" id="app">
+  <header class="topbar">
+    <button class="brand" id="btnBrand" type="button" title="打开设置">NeoTab</button>
+  </header>
+
+  <main class="stage" id="stage">
+    <section class="hero" id="hero" hidden>
+      <div class="clock" id="clock">
+        <div class="clock-time" id="clockTime">00:00</div>
+        <div class="clock-date" id="clockDate"></div>
+      </div>
+      <form class="searchbar" id="searchForm" autocomplete="off">
+        <button class="engine-btn" id="engineBtn" type="button" title="切换搜索引擎">必应</button>
+        <input class="search-input" id="searchInput" type="search" placeholder="搜索网页，或按 Ctrl / Command + F 查找图标" spellcheck="false">
+        <button class="search-go" type="submit" title="搜索"><svg class="ico"><use href="#i-search"/></svg></button>
+      </form>
+    </section>
+
+    <div class="desk-viewport" id="deskVp">
+      <div class="desk-track" id="deskTrack"></div>
+    </div>
+
+    <div class="empty-hint" id="emptyHint" hidden>
+      <p>这个桌面还是空的</p>
+      <span>长按空白处开始</span>
+    </div>
+  </main>
+
+  <nav class="dots" id="dots" aria-label="桌面分页"></nav>
+
+  <button class="corner-notes" id="btnNotes" type="button" title="便签" hidden>
+    <svg class="ico"><use href="#i-note"/></svg><span>便签</span>
+  </button>
+</div>
+
+<div class="settings" id="settings" hidden>
+  <div class="settings-backdrop" data-close-settings></div>
+  <section class="settings-panel" role="dialog" aria-modal="true" aria-label="设置">
+    <header class="settings-head">
+      <div class="settings-heading">
+        <h2 id="settingsTitle">图标</h2>
+      </div>
+      <button class="icon-btn settings-close" type="button" data-close-settings title="关闭">
+        <svg class="ico"><use href="#i-close"/></svg>
+      </button>
+    </header>
+
+    <div class="settings-body">
+      <nav class="settings-nav" id="settingsNav" aria-label="设置分类">
+        <button type="button" class="nav-item is-active" data-tab="icon"><span>图标</span></button>
+        <button type="button" class="nav-item" data-tab="wallpaper"><span>壁纸</span></button>
+        <button type="button" class="nav-item" data-tab="general"><span>通用</span></button>
+        <button type="button" class="nav-item" data-tab="sync"><span>同步</span></button>
+      </nav>
+
+      <div class="settings-content" id="settingsContent">
+        <section class="panel is-active" data-panel="icon">
+          <div class="field">
+            <p class="field-desc">选择每行显示的图标数量。选「自动」时按屏幕宽度匹配。</p>
+            <div class="chip-row" id="colsChips"></div>
+            <div class="grid-preview" id="colsPreview" aria-hidden="true"></div>
+            <p class="note">图标尺寸、圆角、间距与网格宽度会依据列数和屏幕尺寸自动计算，在横屏与竖屏下保持一致的视觉节奏。</p>
+          </div>
+        </section>
+
+        <section class="panel" data-panel="wallpaper">
+          <div class="field">
+            <div class="btn-row">
+              <button class="primary-btn" id="btnChangeWallpaper" type="button">
+                <svg class="ico"><use href="#i-image"/></svg>更换壁纸
+              </button>
+            </div>
+            <p class="field-desc">点击后选择本地图片，上传完成即自动应用；下方为内置背景，点击即切换。</p>
+            <div class="preset-row" id="wallPresets"></div>
+          </div>
+          <div class="field">
+            <label class="slider-row" for="blurRange"><span>模糊度</span><output id="blurOut">28 px</output></label>
+            <input class="range" id="blurRange" type="range" min="0" max="60" step="1" value="28">
+            <label class="slider-row" for="maskRange"><span>遮罩浓度</span><output id="maskOut">10 %</output></label>
+            <input class="range" id="maskRange" type="range" min="0" max="90" step="1" value="10">
+            <button class="text-btn" id="btnResetWallpaper" type="button">恢复默认壁纸</button>
+          </div>
+        </section>
+
+        <section class="panel" data-panel="general">
+          <div class="field">
+            <label class="switch-row" for="optIconBlank"><span>在新标签页打开图标链接</span><input type="checkbox" id="optIconBlank" checked><i class="switch"></i></label>
+            <label class="switch-row" for="optSearchBlank"><span>在新标签页打开搜索结果</span><input type="checkbox" id="optSearchBlank" checked><i class="switch"></i></label>
+          </div>
+          <div class="field">
+            <label class="switch-row" for="optClockShow"><span>显示时间与日期</span><input type="checkbox" id="optClockShow"><i class="switch"></i></label>
+            <label class="switch-row" for="optSearchShow"><span>显示搜索栏</span><input type="checkbox" id="optSearchShow"><i class="switch"></i></label>
+            <label class="switch-row" for="optClock24"><span>24 小时制</span><input type="checkbox" id="optClock24" checked><i class="switch"></i></label>
+            <label class="switch-row" for="optNotesShow"><span>显示便签入口</span><input type="checkbox" id="optNotesShow"><i class="switch"></i></label>
+          </div>
+          <div class="field">
+            <label class="switch-row" for="optAutoIcon"><span>自动解析网站图标</span><input type="checkbox" id="optAutoIcon" checked><i class="switch"></i></label>
+            <label class="switch-row" for="optIconService"><span>公共图标服务兜底</span><input type="checkbox" id="optIconService"><i class="switch"></i></label>
+            <div class="btn-row">
+              <button class="secondary-btn" id="btnRefreshIcons" type="button">清除缓存并重新解析</button>
+            </div>
+            <p class="field-desc">优先用浏览器本地图标缓存，其次只访问你添加的站点自身的 favicon.ico / apple-touch-icon；不上传任何数据。开启「公共图标服务」后，仅在前几种都失败时才会把域名发给 icons.duckduckgo.com。也可在图标右键菜单里单独重新解析，或在编辑图标时填写图标地址 / 上传本地图片。</p>
+          </div>
+          <div class="field">
+            <div class="btn-row">
+              <button class="secondary-btn" id="btnAddDesk" type="button">新建桌面</button>
+            </div>
+            <p class="field-desc">左右滑动、点击底部圆点、← / → 方向键或触摸板横扫切换桌面；长按空白处可管理当前桌面。</p>
+          </div>
+          <div class="field">
+            <label class="select-row" for="optEngine"><span>默认搜索引擎</span>
+              <select id="optEngine">
+                <option value="baidu">百度</option>
+                <option value="bing">必应</option>
+                <option value="google">Google</option>
+                <option value="duckduckgo">DuckDuckGo</option>
+                <option value="so">360 搜索</option>
+              </select>
+            </label>
+          </div>
+        </section>
+
+        <section class="panel" data-panel="sync">
+          <div class="field">
+            <p class="field-desc">导出为 JSON 文件；导入只接受本项目导出的备份文件。下方为可选的 WebDAV 云端备份与多设备同步。</p>
+            <div class="btn-row">
+              <button class="primary-btn" id="btnExport" type="button">导出备份</button>
+              <button class="secondary-btn" id="btnImport" type="button">导入备份</button>
+            </div>
+          </div>
+          <div class="webdav-sync-panel">
+            <div class="webdav-inline-host"></div>
+          </div>
+          <div class="field">
+            <p class="field-desc">清空所有桌面、图标与壁纸，回到初始状态。此操作不可撤销。</p>
+            <button class="danger-btn" id="btnResetAll" type="button">重置全部数据</button>
+          </div>
+        </section>
+      </div>
+    </div>
+  </section>
+</div>
+
+<div class="layer" id="dialogLayer" hidden></div>
+<div class="layer" id="folderLayer" hidden></div>
+
+<div class="layer global-search-layer" id="globalSearchLayer" hidden>
+  <div class="global-search-box" role="dialog" aria-label="查找图标">
+    <div class="global-search-head">
+      <svg class="ico"><use href="#i-search"/></svg>
+      <input id="globalSearchInput" type="search" placeholder="查找图标、文件夹或书签" spellcheck="false">
+    </div>
+    <div class="global-search-results" id="globalSearchResults"></div>
+  </div>
+</div>
+
+<div class="notes-panel" id="notesPanel" hidden>
+  <div class="notes-head"><span>便签</span><button class="icon-btn" id="btnNotesClose" type="button" title="关闭"><svg class="ico"><use href="#i-close"/></svg></button></div>
+  <textarea id="notesText" placeholder="随手记点什么…"></textarea>
+  <div class="notes-foot" id="notesStatus">自动保存</div>
+</div>
+
+<div class="context-menu" id="contextMenu" hidden></div>
+<div class="toast" id="toast" hidden></div>
+
+<input type="file" id="wallpaperFile" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml" hidden>
+<input type="file" id="backupFile" hidden>
+<input type="file" id="iconFile" accept="image/png,image/jpeg,image/webp,image/svg+xml" hidden>
+
+<template id="tplTile">
+  <div class="tile">
+    <div class="tile-inner">
+      <div class="tile-icon"><img alt="" draggable="false"><span class="tile-letter"></span></div>
+      <div class="tile-widget" hidden></div>
+      <span class="tile-title"></span>
+    </div>
+  </div>
+</template>
+
+<template id="tplSearchItem">
+  <button class="search-item" type="button">
+    <span class="search-item-icon"><img alt="" draggable="false"><span class="tile-letter"></span></span>
+    <span class="search-item-text"><strong></strong><small></small></span>
+  </button>
+</template>
+
+<script src="js/00-core.js"></script>
+<script src="js/05-icons.js"></script>
+<script src="js/10-storage.js"></script>
+<script src="js/20-state.js"></script>
+<script src="js/30-wallpaper.js"></script>
+<script src="js/40-grid.js"></script>
+<script src="js/50-desks.js"></script>
+<script src="js/60-search.js"></script>
+<script src="js/70-settings.js"></script>
+<script src="js/80-dialogs.js"></script>
+<script src="js/85-webdav.js"></script>
+<script src="js/90-app.js"></script>
+</body>
+</html>
