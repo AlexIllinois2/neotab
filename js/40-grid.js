@@ -310,15 +310,37 @@
       return currentGrid ? Array.prototype.slice.call(currentGrid.children) : [];
     }
 
-    /* DOM 顺序改变后，其他图标从旧位置平滑滑到新位置（先倒放再归位）。 */
+    /* 剔除 transform 后的布局矩形：FLIP 动画用 transform 做位移，动画进行中
+       getBoundingClientRect 会带上临时偏移，用它挑「最近磁贴」会让重排方向
+       来回翻转（图标蹦迪）。offset 之外的缩放都在 .tile-icon 内层，不影响本层。 */
+    function stableRect(n) {
+      const b = n.getBoundingClientRect();
+      let tx = 0, ty = 0;
+      const m = getComputedStyle(n).transform;
+      if (m && m.indexOf('matrix') === 0) {
+        const p = m.slice(m.indexOf('(') + 1, -1).split(',').map(parseFloat);
+        tx = p.length >= 16 ? p[12] : p[4];
+        ty = p.length >= 16 ? p[13] : p[5];
+      }
+      // 注意：getBoundingClientRect 返回 DOMRectReadOnly（只读），严格模式下
+      // 直接 r.left -= tx 会抛 TypeError，必须返回普通对象。
+      return { left: b.left - tx, top: b.top - ty, right: b.right - tx,
+               bottom: b.bottom - ty, width: b.width, height: b.height };
+    }
+
+    /* DOM 顺序改变后，其他图标从旧位置平滑滑到新位置（先倒放再归位）。
+       前后位置按节点本身记录（不按下标对应，顺序一变就错位），且都读布局
+       位置——上一次动画没放完也能从真实槽位接续，不会叠加位移。 */
     function flipShift(mutate) {
-      const moving = gridTiles();
-      const before = moving.map(function (n) { return n.getBoundingClientRect(); });
+      const tiles = gridTiles();
+      const before = new Map(tiles.map(function (n) { return [n, stableRect(n)]; }));
       mutate();
-      moving.forEach(function (n, i) {
+      tiles.forEach(function (n) {
         if (press && press.tile === n) return; // 抬起的磁贴由手指驱动，不参与
-        const dx = before[i].left - n.getBoundingClientRect().left;
-        const dy = before[i].top - n.getBoundingClientRect().top;
+        const old = before.get(n);
+        const r = stableRect(n);
+        const dx = old.left - r.left;
+        const dy = old.top - r.top;
         if (!dx && !dy) return;
         if (n.__flipTimer) clearTimeout(n.__flipTimer);
         n.style.transition = 'none';
@@ -330,20 +352,23 @@
       });
     }
 
-    /* 指针落在哪个槽位：最近磁贴 + 左右半边决定插到它前面还是后面。 */
-    function hitSlot(x, y, exclude) {
-      const others = gridTiles().filter(function (n) { return n !== exclude; });
-      if (!others.length) return 0;
-      let best = null, bestD = Infinity;
-      others.forEach(function (n) {
-        const r = n.getBoundingClientRect();
-        const cx = Math.max(r.left, Math.min(x, r.right));
-        const cy = Math.max(r.top, Math.min(y, r.bottom));
-        const d = (x - cx) * (x - cx) + (y - cy) * (y - cy);
-        if (d < bestD) { bestD = d; best = { node: n, rect: r }; }
-      });
-      const i = others.indexOf(best.node);
-      return i + (x > best.rect.left + best.rect.width / 2 ? 1 : 0);
+    /* 指针落在哪个槽位：直接按网格几何（列距/行距）换算，不比「最近磁贴」。
+       最近磁贴法在指针跨行/越界时，会因每次重排改变磁贴间的竞争格局而来回
+       翻转（图标蹦迪）；几何槽位只依赖指针位置，同一位置永远算出同一插入点，
+       天然幂等稳定。列内左右细分交给槽位边界（cell 与 gap 的中点）处理。 */
+    function hitSlot(x, y) {
+      if (!currentGrid) return 0;
+      const g = currentGrid.getBoundingClientRect();
+      const cs = getComputedStyle(currentGrid);
+      const cols = parseInt(cs.getPropertyValue('--cols'), 10) || 8;
+      const cell = parseFloat(cs.getPropertyValue('--cell')) || 88;
+      const gap = parseFloat(cs.getPropertyValue('--gap')) || 22;
+      const rowH = parseFloat(cs.getPropertyValue('--row-h')) || 120;
+      const rowGap = parseFloat(cs.getPropertyValue('--row-gap')) || 22;
+      const col = U.clamp(Math.floor((x - g.left + gap / 2) / (cell + gap)), 0, cols - 1);
+      const rows = Math.max(1, Math.ceil(gridTiles().length / cols));
+      const row = U.clamp(Math.floor((y - g.top + rowGap / 2) / (rowH + rowGap)), 0, rows - 1);
+      return row * cols + col;
     }
 
     function releasePress() {
@@ -393,7 +418,7 @@
        移开则取消。合并就绪期间冻结排序预览。 */
     function mergeHover(x, y, p) {
       if (p.mergeReady) {
-        const r = p.mergeTarget.getBoundingClientRect();
+        const r = stableRect(p.mergeTarget);
         const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
         if (Math.hypot(x - cx, y - cy) > Math.max(r.width, r.height) * 0.55) cancelMerge(p);
         else return;
@@ -401,7 +426,7 @@
       const others = gridTiles().filter(function (n) { return n !== p.tile; });
       let cand = null, bestD = Infinity;
       others.forEach(function (n) {
-        const r = n.getBoundingClientRect();
+        const r = stableRect(n);
         const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
         const d = Math.hypot(x - cx, y - cy);
         if (d < Math.max(r.width, r.height) * 0.42 && d < bestD) { bestD = d; cand = n; }
@@ -438,10 +463,13 @@
       }
       if (d.type === 'folder') return false;
       const folder = { id: U.uid(), type: 'folder', title: '新建文件夹', size: '1x1', children: [t, d] };
-      const iT = b.list.indexOf(t);
+      // 先删被拖项、再删目标项且各自现算下标：两个下标若在 splice 前一并算好，
+      // 前面删掉一个元素会让后面那个整体偏移 1，splice 删错邻居，导致被拖项
+      // 既进了文件夹又残留在桌面（同 id 双份，删除时还会删错对象）。
       const iD = a.list.indexOf(d);
-      if (iT >= 0) b.list.splice(iT, 1);
       if (iD >= 0) a.list.splice(iD, 1);
+      const iT = b.list.indexOf(t);
+      if (iT >= 0) b.list.splice(iT, 1);
       b.list.splice(U.clamp(iT, 0, b.list.length), 0, folder);
       // 新建文件夹（未上锁）合并完成后直接打开预览。
       NT.state.changed({ grid: true });
@@ -453,7 +481,7 @@
     function previewOrder(x, y, p) {
       if (!currentGrid || p.mergeReady) return;
       const c = Array.prototype.indexOf.call(currentGrid.children, p.tile);
-      const k = hitSlot(x, y, p.tile);
+      const k = hitSlot(x, y);
       if (k < 0 || k === c) return;
       flipShift(function () {
         const others = gridTiles().filter(function (n) { return n !== p.tile; });

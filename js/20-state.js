@@ -153,20 +153,39 @@
   }
 
   function normalizeDesks(desks) {
+    // 按 id 去重：老版本「拖入文件夹」bug 会把同一项既留在桌面列表又塞进
+    // 文件夹 children（同 id 双份）。文件夹内子项优先占位，桌面残留让位。
+    const seen = Object.create(null);
+    const reserved = Object.create(null);
+    (desks || []).forEach(function (d) {
+      (d.items || []).forEach(function (item) {
+        if (item && item.type === 'folder') {
+          (item.children || []).forEach(function (c) { if (c && c.id) reserved[c.id] = true; });
+        }
+      });
+    });
+    function dedupe(list, dropReserved) {
+      return list.filter(function (item) {
+        if (item.id && dropReserved && reserved[item.id]) return false;
+        if (item.id && seen[item.id]) return false;
+        if (item.id) seen[item.id] = true;
+        return true;
+      });
+    }
     return desks.map(function (d) {
       return {
         id: d.id || U.uid(),
         name: String(d.name || '桌面').slice(0, 24),
         glyph: d.glyph || String(d.name || '桌').charAt(0),
-        items: (d.items || []).map(function (item) {
+        items: dedupe((d.items || []).map(function (item) {
           const copy = Object.assign({}, item);
           copy.id = copy.id || U.uid();
           copy.size = safeSize(copy.size);
-          if (copy.type === 'folder') copy.children = (copy.children || []).map(function (child) {
+          if (copy.type === 'folder') copy.children = dedupe((copy.children || []).map(function (child) {
             return Object.assign({ id: U.uid(), size: '1x1' }, child);
-          });
+          }), false);
           return copy;
-        })
+        }), true)
       };
     });
   }
