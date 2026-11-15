@@ -352,12 +352,14 @@
       });
     }
 
-    /* 指针落在哪个槽位：直接按网格几何（列距/行距）换算，不比「最近磁贴」。
-       最近磁贴法在指针跨行/越界时，会因每次重排改变磁贴间的竞争格局而来回
-       翻转（图标蹦迪）；几何槽位只依赖指针位置，同一位置永远算出同一插入点，
-       天然幂等稳定。列内左右细分交给槽位边界（cell 与 gap 的中点）处理。 */
-    function hitSlot(x, y) {
-      if (!currentGrid) return 0;
+    /* 指针落在哪个槽位：按网格几何（列距/行距）直接换算，不比「最近磁贴」。
+       最近磁贴法会因每次重排改变磁贴间竞争格局而来回翻转（图标蹦迪）；
+       几何槽位只依赖指针位置，天然幂等稳定。返回 others 坐标（插到
+       others[k] 前面）。槽位内左右细分：左半边插到该格磁贴前面、右半边插到
+       后面——悬停某格中心时被拖图标贴在旁边而不是抢格子，目标磁贴不挪窝，
+       合并候选不会丢。该格已被拖动图标自己占住时返回 -1（无需重排）。 */
+    function hitSlot(x, y, others, drag) {
+      if (!currentGrid || !others.length) return 0;
       const g = currentGrid.getBoundingClientRect();
       const cs = getComputedStyle(currentGrid);
       const cols = parseInt(cs.getPropertyValue('--cols'), 10) || 8;
@@ -365,10 +367,16 @@
       const gap = parseFloat(cs.getPropertyValue('--gap')) || 22;
       const rowH = parseFloat(cs.getPropertyValue('--row-h')) || 120;
       const rowGap = parseFloat(cs.getPropertyValue('--row-gap')) || 22;
+      const tiles = gridTiles();
       const col = U.clamp(Math.floor((x - g.left + gap / 2) / (cell + gap)), 0, cols - 1);
-      const rows = Math.max(1, Math.ceil(gridTiles().length / cols));
+      const rows = Math.max(1, Math.ceil(tiles.length / cols));
       const row = U.clamp(Math.floor((y - g.top + rowGap / 2) / (rowH + rowGap)), 0, rows - 1);
-      return row * cols + col;
+      const slot = row * cols + col;
+      if (slot >= tiles.length) return others.length;      // 内容之外 → 追加末尾
+      const i = others.indexOf(tiles[slot]);
+      if (i < 0) return -1;                                // 该格是拖动图标自己 → 不动
+      const inCell = (x - g.left) - col * (cell + gap);
+      return i + (inCell > cell / 2 ? 1 : 0);
     }
 
     function releasePress() {
@@ -401,10 +409,17 @@
       document.body.classList.add('is-dragging-tile');
     }
 
-    /* DOM 重排后基准位置变了：按当前位移反推新基准，图标保持贴住手指。 */
-    function reanchor(p) {
+    /* DOM 重排后基准位置变了：按当前位移反推新基准，并立即用新基准重算
+       transform。只更新 base 不重算 transform 的话，被拖图标会带着旧偏移
+       画在新基座上，闪现到旁边一格（残影），直到下一个 pointermove 才修正。 */
+    function reanchor(p, x, y) {
       const r = p.tile.getBoundingClientRect();
       p.base = { left: r.left - p.dx, top: r.top - p.dy };
+      if (x !== undefined) {
+        p.dx = x - (p.base.left + p.gx);
+        p.dy = y - (p.base.top + p.gy);
+        p.tile.style.transform = 'translate3d(' + p.dx.toFixed(1) + 'px,' + p.dy.toFixed(1) + 'px,0)';
+      }
     }
 
     function cancelMerge(p) {
@@ -471,23 +486,20 @@
       const iT = b.list.indexOf(t);
       if (iT >= 0) b.list.splice(iT, 1);
       b.list.splice(U.clamp(iT, 0, b.list.length), 0, folder);
-      // 新建文件夹（未上锁）合并完成后直接打开预览。
       NT.state.changed({ grid: true });
-      NT.dialogs.openFolder(folder.id);
       return true;
     }
 
-    /* 拖动经过其他磁贴时实时腾出位置（松手前就生效；合并就绪时冻结）。 */
+    /* 拖动经过其他磁贴时实时腾出位置（松手前就生效）。 */
     function previewOrder(x, y, p) {
-      if (!currentGrid || p.mergeReady) return;
-      const c = Array.prototype.indexOf.call(currentGrid.children, p.tile);
-      const k = hitSlot(x, y);
-      if (k < 0 || k === c) return;
-      flipShift(function () {
-        const others = gridTiles().filter(function (n) { return n !== p.tile; });
-        currentGrid.insertBefore(p.tile, others[Math.min(k, others.length)] || null);
-      });
-      reanchor(p);
+      if (!currentGrid) return;
+      const others = gridTiles().filter(function (n) { return n !== p.tile; });
+      const k = hitSlot(x, y, others, p.tile);
+      if (k < 0) return;
+      const before = others[Math.min(k, others.length)] || null;
+      if (before === p.tile.nextSibling) return;   // 已在目标位置，无需重排
+      flipShift(function () { currentGrid.insertBefore(p.tile, before); });
+      reanchor(p, x, y);
     }
 
     function finishDrag(commit) {
@@ -568,8 +580,10 @@
       press.dx = e.clientX - (press.base.left + press.gx);
       press.dy = e.clientY - (press.base.top + press.gy);
       press.tile.style.transform = 'translate3d(' + press.dx.toFixed(1) + 'px,' + press.dy.toFixed(1) + 'px,0)';
-      previewOrder(e.clientX, e.clientY, press);
+      // 先评估合并候选再决定重排：候选激活期间冻结排序预览，
+      // 否则重排会把目标磁贴顶走，合并悬停计时永远凑不满。
       mergeHover(e.clientX, e.clientY, press);
+      previewOrder(e.clientX, e.clientY, press);
     }, { passive: false });
     ['pointerup', 'pointercancel'].forEach(function (name) {
       global.addEventListener(name, function (e) {

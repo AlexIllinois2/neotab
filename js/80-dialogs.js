@@ -6,8 +6,127 @@
 
   let dialogLayer, folderLayer, menu;
 
+  /* ---- 文件夹弹层内长按拖动排序 ----------------------------------------------
+     与桌面磁贴一致的交互：按住 500ms 抬起，移动时本体 transform 跟随手指，
+     实时插到最近兄弟磁贴前/后（按指针在其中心点左右半边），松手按 DOM 顺序
+     回写 folder.children。弹层网格是均匀 auto-fill 网格且无让位动画，
+     兄弟矩形即最终位置，直接用中心点最近邻即可。 */
+  let fdCtx = null;        // 当前弹层 { grid, folder, press }
+  let fdClickGuard = false; // 松手后吞掉紧跟的 click，防止拖完顺手打开链接
+
+  function fdEndPress() {
+    const ctx = fdCtx;
+    if (!ctx || !ctx.press) return;
+    const p = ctx.press;
+    clearTimeout(p.timer);
+    ctx.press = null;
+    if (!p.armed) return;
+    p.item.classList.remove('is-lifted');
+    p.item.style.transform = '';
+    p.item.style.zIndex = '';
+    if (p.dragging) {
+      const order = Array.prototype.map.call(ctx.grid.querySelectorAll('.folder-item'),
+        function (n) { return n.dataset.childId; })
+        .map(function (id) { return ctx.folder.children.find(function (c) { return c.id === id; }); })
+        .filter(Boolean);
+      if (order.length === ctx.folder.children.length) {
+        ctx.folder.children = order;
+        // 只重绘桌面网格；弹层已按 DOM 实时重排，保持现状即可。
+        NT.state.changed({ grid: true });
+      }
+    }
+    fdClickGuard = true;
+    setTimeout(function () { fdClickGuard = false; }, 0); // click 在此之前同步派发
+  }
+
+  /* 与桌面 stableRect 同款：剔除 transform 后的基础位置。弹层内磁贴在
+     FLIP 过渡飞行中矩形是临时的，直接用会让最近邻判定振荡。 */
+  function fdStableRect(n) {
+    const b = n.getBoundingClientRect();
+    let tx = 0, ty = 0;
+    const m = getComputedStyle(n).transform;
+    if (m && m.indexOf('matrix') === 0) {
+      const p = m.slice(m.indexOf('(') + 1, -1).split(',').map(parseFloat);
+      tx = p.length >= 16 ? p[12] : p[4];
+      ty = p.length >= 16 ? p[13] : p[5];
+    }
+    return { left: b.left - tx, top: b.top - ty, width: b.width, height: b.height };
+  }
+
+  /* 兄弟磁贴让位的 FLIP 动画：先记位置，重排后从旧位滑到新位，不再瞬移。
+     被拖项不参与（它由调用方重锚 transform）。token 防止连续快速重排时
+     上一轮的清理定时器把这一轮的过渡中途打断。 */
+  function fdFlip(grid, dragged, mutate) {
+    const items = Array.prototype.filter.call(grid.querySelectorAll('.folder-item'),
+      function (n) { return n !== dragged; });
+    const before = items.map(function (n) { return [n, fdStableRect(n)]; });
+    mutate();
+    before.forEach(function (pair) {
+      const n = pair[0], b = pair[1];
+      const a = fdStableRect(n);
+      const dx = b.left - a.left, dy = b.top - a.top;
+      if (!dx && !dy) return;
+      n.style.transition = 'none';
+      n.style.transform = 'translate(' + dx + 'px,' + dy + 'px)';
+      void n.offsetWidth; // 强制回流，确保从旧位起步
+      n.style.transition = 'transform 180ms ease';
+      n.style.transform = '';
+      const token = n._fdFlip = (n._fdFlip || 0) + 1;
+      setTimeout(function () { if (n._fdFlip === token) n.style.transition = ''; }, 200);
+    });
+  }
+
+  function fdOnMove(e) {
+    const ctx = fdCtx;
+    if (!ctx || !ctx.press) return;
+    const p = ctx.press;
+    const dx = e.clientX - p.x, dy = e.clientY - p.y;
+    if (!p.armed) {
+      if (dx * dx + dy * dy > 64) { clearTimeout(p.timer); ctx.press = null; } // 移动即取消长按
+      return;
+    }
+    p.dragging = true;
+    p.item.style.transform = 'translate(' + dx + 'px,' + dy + 'px)';
+    e.preventDefault();
+    let best = null, bestD = Infinity, bestCx = 0;
+    Array.prototype.forEach.call(ctx.grid.querySelectorAll('.folder-item'), function (n) {
+      if (n === p.item) return;
+      const r = fdStableRect(n);
+      const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+      const d = (cx - e.clientX) * (cx - e.clientX) + (cy - e.clientY) * (cy - e.clientY);
+      if (d < bestD) { bestD = d; best = n; bestCx = cx; }
+    });
+    if (!best) return;
+    const before = e.clientX > bestCx ? best.nextSibling : best;
+    if (before === p.item || p.item.nextSibling === before) return;
+    // 重排会改变被拖项的基座位置：FLIP 让位的同时重锚，保持视觉位置连续。
+    const oldBase = fdStableRect(p.item);
+    fdFlip(ctx.grid, p.item, function () { ctx.grid.insertBefore(p.item, before); });
+    const newBase = fdStableRect(p.item);
+    const shiftX = newBase.left - oldBase.left, shiftY = newBase.top - oldBase.top;
+    if (shiftX || shiftY) {
+      p.x += shiftX; p.y += shiftY;
+      p.item.style.transform = 'translate(' + (e.clientX - p.x) + 'px,' + (e.clientY - p.y) + 'px)';
+    }
+  }
+
+  function fdOnDown(e) {
+    const ctx = fdCtx;
+    if (!ctx || (e.button !== undefined && e.button !== 0)) return;
+    const item = e.target.closest('.folder-item');
+    if (!item) return;
+    const p = { item: item, x: e.clientX, y: e.clientY, timer: null, armed: false, dragging: false };
+    ctx.press = p;
+    p.timer = setTimeout(function () {
+      if (ctx.press !== p) return;
+      p.armed = true;
+      item.classList.add('is-lifted');
+      item.style.zIndex = '6';
+    }, 500);
+  }
+
   function closeDialog() { dialogLayer.hidden = true; dialogLayer.textContent = ''; }
-  function closeFolder() { folderLayer.hidden = true; folderLayer.textContent = ''; }
+  function closeFolder() { folderLayer.hidden = true; folderLayer.textContent = ''; fdCtx = null; closeMenu(); }
 
   function showDialog(box) {
     closeMenu();
@@ -111,7 +230,9 @@
   function closeMenu() { if (menu) { menu.hidden = true; menu.textContent = ''; } }
 
   function contextMenu(x, y, items) {
-    closeDialog(); closeFolder();
+    // 不关文件夹弹层：弹层内磁贴右键也要弹菜单（菜单 z-index 在弹层之上）；
+    // 弹层打开时桌面被遮挡，桌面入口本就触发不到 closeFolder。
+    closeDialog();
     menu.textContent = '';
     items.forEach(function (entry) {
       if (entry === '-') { menu.appendChild(U.el('div', { class: 'menu-sep' })); return; }
@@ -269,9 +390,13 @@
         iconBox.appendChild(img);
         NT.icons.apply(img, iconBox, child);
       }
-      iconBox.addEventListener('click', function () { closeFolder(); U.openUrl(child.url, NT.state.data.config.iconBlank); });
+      iconBox.addEventListener('click', function () {
+        if (fdClickGuard) return; // 长按/拖动松手后的那次 click，吞掉
+        closeFolder(); U.openUrl(child.url, NT.state.data.config.iconBlank);
+      });
       iconBox.addEventListener('contextmenu', function (e) {
         e.preventDefault();
+        if (fdCtx && fdCtx.press) return; // 长按拖动进行中，不弹菜单
         contextMenu(e.clientX, e.clientY, [
           { label: '打开', action: function () { closeFolder(); U.openUrl(child.url, NT.state.data.config.iconBlank); } },
           { label: '从文件夹移除', danger: true, action: function () {
@@ -282,6 +407,7 @@
           } }
         ]);
       });
+      wrap.dataset.childId = child.id;
       wrap.appendChild(iconBox);
       wrap.appendChild(U.el('span', { class: 'tile-title', text: child.title }));
       grid.appendChild(wrap);
@@ -290,6 +416,7 @@
     folderLayer.textContent = '';
     folderLayer.appendChild(box);
     folderLayer.hidden = false;
+    fdCtx = { grid: grid, folder: folder, press: null };
   }
 
   /* ---- menus --------------------------------------------------------------- */
@@ -448,6 +575,10 @@
     });
     global.addEventListener('resize', closeMenu);
     U.$('#stage').addEventListener('scroll', closeMenu);
+    global.addEventListener('pointerdown', fdOnDown);
+    global.addEventListener('pointermove', fdOnMove);
+    global.addEventListener('pointerup', fdEndPress);
+    global.addEventListener('pointercancel', fdEndPress);
   }
 
   NT.dialogs = {
