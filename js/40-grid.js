@@ -197,11 +197,25 @@
 
   function buildPage(desk, isCurrent) {
     const page = U.el('section', { class: 'desk-page' + (isCurrent ? ' is-current' : '') });
+    if (desk) page.dataset.deskId = desk.id;
     const grid = U.el('div', { class: 'grid' });
     if (isCurrent) grid.id = 'grid';
     if (desk) (desk.items || []).forEach(function (item) { grid.appendChild(makeTile(item)); });
     page.appendChild(grid);
     return page;
+  }
+
+  /* 把 page 设为当前页：迁移 is-current 类与 #grid id，并同步 currentGrid。 */
+  function setCurrentPage(page) {
+    Array.prototype.forEach.call(track.children, function (p) {
+      p.classList.toggle('is-current', p === page);
+      const g = U.$('.grid', p);
+      if (g) {
+        if (p === page) g.id = 'grid';
+        else g.removeAttribute('id');
+      }
+    });
+    currentGrid = U.$('#grid');
   }
 
   function render() {
@@ -210,6 +224,38 @@
     const n = data.desks.length;
     let index = data.desks.findIndex(function (d) { return d.id === data.activeDeskId; });
     if (index < 0) index = 0;
+    const kids = track.children;
+    // 仅切换桌面时旋转现有页面，不做整树重建：重建会重新创建所有磁贴 <img>，
+    // favicon 异步加载的瞬间集体显示字母占位，滑动落定后图标闪一下。
+    if (kids.length === 3 && kids[1].dataset.deskId &&
+        kids[1].dataset.deskId !== data.desks[index].id) {
+      const activeId = data.desks[index].id;
+      const toNext = kids[2] && kids[2].dataset.deskId === activeId;
+      const toPrev = kids[0] && kids[0].dataset.deskId === activeId;
+      if (toNext || toPrev) {
+        const p0 = kids[0], p1 = kids[1], p2 = kids[2];
+        if (toNext) {
+          // [prev, cur, next] -> [cur, next, 新next]：补上新 next 页、摘掉旧 prev 即可
+          track.appendChild(buildPage(index + 1 < n ? data.desks[index + 1] : null, false));
+          track.removeChild(p0);
+          setCurrentPage(p2);
+        } else {
+          // [prev, cur, next] -> [新prev, prev, cur]
+          track.insertBefore(buildPage(index - 1 >= 0 ? data.desks[index - 1] : null, false), p0);
+          track.removeChild(p2);
+          setCurrentPage(p0);
+        }
+        const active = data.desks[index];
+        U.$('#emptyHint').hidden = !active || (active.items || []).length > 0;
+        layout();
+        // 旋转后视觉焦点页落在中间槽位，无过渡地摆回 -100%。
+        track.classList.add('is-dragging');
+        track.style.transform = 'translate3d(-100%, 0, 0)';
+        void track.offsetWidth;
+        track.classList.remove('is-dragging');
+        return;
+      }
+    }
     track.textContent = '';
     [-1, 0, 1].forEach(function (offset) {
       const slot = index + offset;

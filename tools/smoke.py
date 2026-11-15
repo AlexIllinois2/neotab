@@ -522,9 +522,8 @@ async def run(args: argparse.Namespace) -> int:
                 popup: !document.querySelector('#folderLayer').hidden
               };
             })()""")
-            check("拖到图标上悬停合并为文件夹并自动打开",
-                  merge["ready"] and merge["merged"] and merge["count"] and merge["popup"])
-            await c.evaluate("NT.dialogs.closeFolder()")
+            check("拖到图标上悬停合并为文件夹且不自动打开",
+                  merge["ready"] and merge["merged"] and merge["count"] and not merge["popup"])
 
             # 壁纸 drop 防护：磁贴内丢图片文件不换壁纸；空白处仍可换
             dropGuard = await c.evaluate("""(async () => {

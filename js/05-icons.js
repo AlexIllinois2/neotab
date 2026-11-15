@@ -18,7 +18,9 @@
   const NT = global.NT;
   const U = NT.util;
 
-  const CACHE_KEY = 'neotab.iconCache.v1';
+  // v2：候选顺序改为高分辨率源优先（apple-touch-icon 180px 在 favicon.ico 之前），
+  // 旧缓存记录的都是 16/32px 小图 URL，整体作废后按新顺序重新解析。
+  const CACHE_KEY = 'neotab.iconCache.v2';
   const OK_TTL = 30 * 24 * 60 * 60 * 1000;   // resolved URL: 30 days
   const FAIL_TTL = 30 * 60 * 1000;           // known miss: retry after 30 min
   let cache = load();
@@ -69,17 +71,20 @@
     if (fresh && !hit.src) return manual;               // known miss: stay offline
     const list = [];
     if (fresh && hit.src) list.push(hit.src);            // verified: fastest path
+    // 顺序即清晰度优先级：apple-touch-icon 通常 180×180，远优于 favicon.ico
+    // （常为 16×16，放大到磁贴尺寸就模糊起锯齿）。chromeFavicon 是本地缓存、
+    // 零网络请求，作为触摸图标 404 后的中转；favicon.ico 兜底。
+    list.push(
+      base + '/apple-touch-icon.png',
+      base + '/apple-touch-icon-precomposed.png'
+    );
     if (NT.isExtension) {
       const f64 = chromeFavicon(item.url, 64);
       const f32 = chromeFavicon(item.url, 32);
       if (f64) list.push(f64);
       if (f32) list.push(f32);
     }
-    list.push(
-      base + '/favicon.ico',
-      base + '/apple-touch-icon.png',
-      base + '/apple-touch-icon-precomposed.png'
-    );
+    list.push(base + '/favicon.ico');
     if (cfg.iconService) list.push('https://icons.duckduckgo.com/ip3/' + h + '.ico');
 
     const seen = {};
