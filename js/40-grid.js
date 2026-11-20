@@ -7,6 +7,7 @@
   const NT = global.NT;
   const U = NT.util;
   let track, shell, currentGrid;
+  let apiReceiveFolderDragOut = null; // bind() 后指向弹层拖出交接实现
 
   /* ---- derived layout ------------------------------------------------------ */
   function layout() {
@@ -645,6 +646,31 @@
       if (press && press.armed) e.preventDefault();
     });
 
+    /* 文件夹弹层拖出交接：子项已从文件夹移除，按指针槽位插入当前桌面，
+       重渲染后从新磁贴接管指针继续桌面拖动（可继续排序/合并，松手落位）。
+       抓取点取图标中心，磁贴立刻吸附到手指下，视觉上无缝接续弹层拖动。 */
+    function receiveFolderDragOut(child, x, y, pointerId) {
+      const list = NT.state.activeDesk().items;
+      const k = hitSlot(x, y, gridTiles(), null);
+      list.splice(U.clamp(k, 0, list.length), 0, child);
+      NT.state.changed({ grid: true });
+      const tile = currentGrid.querySelector('[data-id="' + child.id + '"]');
+      if (!tile) return;
+      releasePress();
+      NT.desks.cancelGesture();        // 拖出期间页面滑动让位
+      const r = tile.getBoundingClientRect();
+      const p = { tile: tile, id: pointerId, x0: x, y0: y,
+                  armed: true, dragging: true, mergeReady: false, mergeTarget: null,
+                  base: { left: r.left, top: r.top }, gx: r.width / 2, gy: r.height / 2 };
+      p.dx = x - (p.base.left + p.gx);
+      p.dy = y - (p.base.top + p.gy);
+      press = p;
+      tile.classList.add('is-lifted');
+      tile.style.transform = 'translate3d(' + p.dx.toFixed(1) + 'px,' + p.dy.toFixed(1) + 'px,0)';
+      document.body.classList.add('is-dragging-tile');
+    }
+    apiReceiveFolderDragOut = receiveFolderDragOut;
+
     track.addEventListener('dragstart', function (e) {
       // 磁贴与文件夹内的图标一律禁止原生拖拽（排序走上面的指针拖动）。
       if (e.target.closest && e.target.closest('.tile')) e.preventDefault();
@@ -680,6 +706,9 @@
   NT.grid = {
     init: function () { track = U.$('#deskTrack'); shell = U.$('#deskVp'); bind(); },
     render: render, layout: layout, moveTile: moveTile, clearDragStyles: clearDragStyles,
-    current: function () { return currentGrid; }
+    current: function () { return currentGrid; },
+    receiveFolderDragOut: function (child, x, y, pointerId) {
+      if (apiReceiveFolderDragOut) apiReceiveFolderDragOut(child, x, y, pointerId);
+    }
   };
 })(window);

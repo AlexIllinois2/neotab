@@ -11,7 +11,7 @@
      实时插到最近兄弟磁贴前/后（按指针在其中心点左右半边），松手按 DOM 顺序
      回写 folder.children。弹层网格是均匀 auto-fill 网格且无让位动画，
      兄弟矩形即最终位置，直接用中心点最近邻即可。 */
-  let fdCtx = null;        // 当前弹层 { grid, folder, press }
+  let fdCtx = null;        // 当前弹层 { grid, folder, box, press }
   let fdClickGuard = false; // 松手后吞掉紧跟的 click，防止拖完顺手打开链接
 
   function fdEndPress() {
@@ -76,6 +76,19 @@
     });
   }
 
+  /* 拖出弹层边界：把该子项从文件夹移除，交给桌面拖动系统按指针槽位落位
+     并接管指针（继续按住可排序/合并，松手落位），弹层随即关闭。 */
+  function fdDragOut(ctx, p, e) {
+    const id = p.item.dataset.childId;
+    const i = ctx.folder.children.findIndex(function (c) { return c.id === id; });
+    if (i < 0) return;
+    const child = ctx.folder.children.splice(i, 1)[0];
+    clearTimeout(p.timer);
+    fdCtx = null;
+    closeFolder();
+    NT.grid.receiveFolderDragOut(child, e.clientX, e.clientY, p.pointerId);
+  }
+
   function fdOnMove(e) {
     const ctx = fdCtx;
     if (!ctx || !ctx.press) return;
@@ -88,6 +101,13 @@
     p.dragging = true;
     p.item.style.transform = 'translate(' + dx + 'px,' + dy + 'px)';
     e.preventDefault();
+    // 指针拖出弹层边界 → 移交桌面继续拖动（文件夹里的图标拖出来）
+    const box = ctx.box.getBoundingClientRect();
+    if (e.clientX < box.left - 12 || e.clientX > box.right + 12 ||
+        e.clientY < box.top - 12 || e.clientY > box.bottom + 12) {
+      fdDragOut(ctx, p, e);
+      return;
+    }
     let best = null, bestD = Infinity, bestCx = 0;
     Array.prototype.forEach.call(ctx.grid.querySelectorAll('.folder-item'), function (n) {
       if (n === p.item) return;
@@ -115,7 +135,8 @@
     if (!ctx || (e.button !== undefined && e.button !== 0)) return;
     const item = e.target.closest('.folder-item');
     if (!item) return;
-    const p = { item: item, x: e.clientX, y: e.clientY, timer: null, armed: false, dragging: false };
+    const p = { item: item, x: e.clientX, y: e.clientY, pointerId: e.pointerId,
+                timer: null, armed: false, dragging: false };
     ctx.press = p;
     p.timer = setTimeout(function () {
       if (ctx.press !== p) return;
@@ -416,7 +437,7 @@
     folderLayer.textContent = '';
     folderLayer.appendChild(box);
     folderLayer.hidden = false;
-    fdCtx = { grid: grid, folder: folder, press: null };
+    fdCtx = { grid: grid, folder: folder, box: box, press: null };
   }
 
   /* ---- menus --------------------------------------------------------------- */
